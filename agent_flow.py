@@ -408,7 +408,7 @@ def build_notebook(state: DSState, notebook_dir: str):
 def run_data_science_flow(
     instructions: str,
     dataset_path: Optional[str] = None,
-    plan_only: bool = False,
+    plan_only: bool = False,  # Note: Currently ignored; invoke() runs to completion for correctness
     notebook_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     state = DSState(instructions=instructions, dataset_path=dataset_path)
