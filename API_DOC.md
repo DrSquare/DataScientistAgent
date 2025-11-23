@@ -52,6 +52,6 @@ Returns the generated Jupyter notebook for the requested run.
 - **Statistical agent** runs correlations and a t-test when numeric data are present.
 - **Data Wrangling agent** engineers interaction and standardized features.
 - **Preparation agent** separates features/target.
-- **Visualization agent** saves a histogram image to `static/` and references it in the outputs.
+- **Visualization agent** adapts to requested visualization types (e.g., histogram, boxplot, scatter, heatmap, scatter matrix, line) inferred from the `instructions` field and saves plots to `static/` for reference in the outputs.
 - **Predictive Modeling agent** trains/evaluates a logistic regression pipeline with preprocessing.
 - **Insight Summary agent** compiles highlights for quick consumption.

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 import nbformat as nbf
 import numpy as np
 import pandas as pd
+from pandas.plotting import scatter_matrix
 from langgraph.graph import END, StateGraph
 from scipy import stats
 from sklearn.compose import ColumnTransformer
@@ -30,6 +31,7 @@ class DSState:
     notebook_cells: List[Any] = field(default_factory=list)
     notebook_filename: Optional[str] = None
     target_column: Optional[str] = None
+    visualization_preferences: List[str] = field(default_factory=list)
 
 
 TASKS = [
@@ -52,11 +54,41 @@ def add_output(state: DSState, title: str, content: str, code: Optional[str] = N
         state.notebook_cells.append(nbf.v4.new_code_cell(code))
 
 
+def infer_visualization_preferences(instructions: str) -> List[str]:
+    lowered = instructions.lower()
+    mapping = {
+        "hist": "histogram",
+        "distribution": "histogram",
+        "box": "boxplot",
+        "scatter": "scatter",
+        "pair": "pairplot",
+        "correlation": "heatmap",
+        "heatmap": "heatmap",
+        "line": "line",
+        "trend": "line",
+    }
+
+    preferences: List[str] = []
+    for keyword, viz_type in mapping.items():
+        if keyword in lowered and viz_type not in preferences:
+            preferences.append(viz_type)
+
+    if not preferences:
+        preferences = ["histogram", "boxplot", "scatter"]
+    return preferences
+
+
 def plan_agent(state: DSState) -> DSState:
     plan_items = [f"Step {i+1}: {task}" for i, task in enumerate(TASKS)]
     state.plan = plan_items
+    state.visualization_preferences = infer_visualization_preferences(state.instructions)
     plan_text = "\n".join(plan_items)
-    add_output(state, "Plan", f"Planned tasks based on request: \n{plan_text}")
+    viz_text = ", ".join(state.visualization_preferences)
+    add_output(
+        state,
+        "Plan",
+        f"Planned tasks based on request: \n{plan_text}\n\nVisualization preferences: {viz_text}",
+    )
     return state
 
 
@@ -202,23 +234,107 @@ def visualization_agent(state: DSState) -> DSState:
         add_output(
             state,
             "Data Visualization",
-            "No numeric columns available for histogram plots.",
+            "No numeric columns available for plotting.",
             code="df.head()",
         )
         return state
 
-    axes = numeric_df.hist(bins=20, figsize=(8, 6))
-    viz_id = f"viz_{uuid.uuid4().hex}.png"
-    output_path = os.path.join("static", viz_id)
-    plt.tight_layout()
-    plt.gcf().savefig(output_path)
-    plt.close("all")
-    add_output(
-        state,
-        "Data Visualization",
-        f"Saved numeric distribution plot to `{output_path}`.",
-        code="df.select_dtypes(include=['number']).hist(bins=20, figsize=(8,6))",
-    )
+    preferences = state.visualization_preferences or ["histogram"]
+    saved_plots: List[str] = []
+
+    for viz_type in preferences:
+        viz_id = f"viz_{viz_type}_{uuid.uuid4().hex}.png"
+        output_path = os.path.join("static", viz_id)
+
+        if viz_type == "histogram":
+            numeric_df.hist(bins=20, figsize=(8, 6))
+            plt.tight_layout()
+            plt.gcf().savefig(output_path)
+            plt.close("all")
+            saved_plots.append(f"Histogram saved to `{output_path}`")
+            add_output(
+                state,
+                "Data Visualization",
+                f"Histogram across numeric columns saved to `{output_path}`.",
+                code="df.select_dtypes(include=['number']).hist(bins=20, figsize=(8,6))",
+            )
+        elif viz_type == "boxplot":
+            numeric_df.plot(kind="box", figsize=(8, 6))
+            plt.tight_layout()
+            plt.gcf().savefig(output_path)
+            plt.close("all")
+            saved_plots.append(f"Boxplot saved to `{output_path}`")
+            add_output(
+                state,
+                "Data Visualization",
+                f"Boxplot across numeric columns saved to `{output_path}`.",
+                code="df.select_dtypes(include=['number']).plot(kind='box', figsize=(8,6))",
+            )
+        elif viz_type == "scatter":
+            if len(numeric_df.columns) >= 2:
+                x_col, y_col = numeric_df.columns[:2]
+                numeric_df.plot(kind="scatter", x=x_col, y=y_col, figsize=(8, 6))
+                plt.tight_layout()
+                plt.gcf().savefig(output_path)
+                plt.close("all")
+                saved_plots.append(f"Scatter plot ({x_col} vs {y_col}) saved to `{output_path}`")
+                add_output(
+                    state,
+                    "Data Visualization",
+                    f"Scatter plot of `{x_col}` vs `{y_col}` saved to `{output_path}`.",
+                    code=f"df.plot(kind='scatter', x='{x_col}', y='{y_col}', figsize=(8,6))",
+                )
+        elif viz_type == "heatmap":
+            corr = numeric_df.corr()
+            fig, ax = plt.subplots(figsize=(8, 6))
+            cax = ax.matshow(corr, cmap="coolwarm")
+            fig.colorbar(cax)
+            ax.set_xticks(range(len(corr.columns)))
+            ax.set_xticklabels(corr.columns, rotation=90)
+            ax.set_yticks(range(len(corr.index)))
+            ax.set_yticklabels(corr.index)
+            plt.tight_layout()
+            fig.savefig(output_path)
+            plt.close(fig)
+            saved_plots.append(f"Correlation heatmap saved to `{output_path}`")
+            add_output(
+                state,
+                "Data Visualization",
+                f"Correlation heatmap saved to `{output_path}`.",
+                code="df.select_dtypes(include=['number']).corr()",
+            )
+        elif viz_type == "pairplot":
+            scatter_matrix(numeric_df, figsize=(8, 6), diagonal="kde")
+            plt.tight_layout()
+            plt.gcf().savefig(output_path)
+            plt.close("all")
+            saved_plots.append(f"Scatter matrix saved to `{output_path}`")
+            add_output(
+                state,
+                "Data Visualization",
+                f"Scatter matrix saved to `{output_path}`.",
+                code="from pandas.plotting import scatter_matrix\nscatter_matrix(df.select_dtypes(include=['number']), figsize=(8,6), diagonal='kde')",
+            )
+        elif viz_type == "line":
+            numeric_df.plot(figsize=(8, 6))
+            plt.tight_layout()
+            plt.gcf().savefig(output_path)
+            plt.close("all")
+            saved_plots.append(f"Line plot across numeric columns saved to `{output_path}`")
+            add_output(
+                state,
+                "Data Visualization",
+                f"Line plot across numeric columns saved to `{output_path}`.",
+                code="df.select_dtypes(include=['number']).plot(figsize=(8,6))",
+            )
+
+    if not saved_plots:
+        add_output(
+            state,
+            "Data Visualization",
+            "No visualization generated based on preferences and available data.",
+            code="df.head()",
+        )
     return state
 
 
