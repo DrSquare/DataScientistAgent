@@ -29,6 +29,7 @@ class DSState:
     outputs: List[Dict[str, Any]] = field(default_factory=list)
     notebook_cells: List[Any] = field(default_factory=list)
     notebook_filename: Optional[str] = None
+    target_column: Optional[str] = None
 
 
 TASKS = [
@@ -136,24 +137,54 @@ def statistical_analysis_agent(state: DSState) -> DSState:
 def data_wrangling_agent(state: DSState) -> DSState:
     df = state.df
     df = df.copy()
-    df["interaction"] = df.select_dtypes(include=["number"]).prod(axis=1)
-    df["scaled_feature_a"] = (df["feature_a"] - df["feature_a"].mean()) / df["feature_a"].std()
+    numeric_cols = df.select_dtypes(include=["number"]).columns
+
+    if len(numeric_cols) == 0:
+        add_output(
+            state,
+            "Data Wrangling",
+            "No numeric columns found to engineer interaction or scaling features.",
+            code="df.head()",
+        )
+        return state
+
+    df["interaction"] = df[numeric_cols].prod(axis=1)
+    primary_col = numeric_cols[0]
+    df[f"scaled_{primary_col}"] = (df[primary_col] - df[primary_col].mean()) / df[primary_col].std()
     state.df = df
     add_output(
         state,
         "Data Wrangling",
-        "Engineered `interaction` and standardized `feature_a`.",
-        code="df[['interaction', 'scaled_feature_a']].head()",
+        f"Engineered `interaction` across numeric columns and standardized `{primary_col}`.",
+        code="df.filter(regex='interaction|scaled').head()",
     )
     return state
 
 
 def data_preparation_agent(state: DSState) -> DSState:
     df = state.df
-    target = df.columns[-1]
+
+    preferred_targets = [c for c in df.columns if c.lower() in {"target", "label", "outcome", "y"}]
+    target = preferred_targets[0] if preferred_targets else None
+
+    if target is None:
+        discrete_candidates = [c for c in df.columns if df[c].nunique() <= 10]
+        target = discrete_candidates[0] if discrete_candidates else None
+
+    if target is None:
+        numeric_cols = df.select_dtypes(include=["number"]).columns
+        if len(numeric_cols) == 0:
+            df["target"] = 0
+            target = "target"
+        else:
+            seed_col = numeric_cols[0]
+            df["target"] = (df[seed_col] > df[seed_col].median()).astype(int)
+            target = "target"
+
     X = df.drop(columns=[target])
     y = df[target]
     state.df = df
+    state.target_column = target
     add_output(
         state,
         "Data Preparation",
@@ -165,25 +196,35 @@ def data_preparation_agent(state: DSState) -> DSState:
 
 def visualization_agent(state: DSState) -> DSState:
     df = state.df
-    fig, ax = plt.subplots(figsize=(5, 4))
-    df.select_dtypes(include=["number"]).hist(ax=ax)
+    numeric_df = df.select_dtypes(include=["number"])
+
+    if numeric_df.empty:
+        add_output(
+            state,
+            "Data Visualization",
+            "No numeric columns available for histogram plots.",
+            code="df.head()",
+        )
+        return state
+
+    axes = numeric_df.hist(bins=20, figsize=(8, 6))
     viz_id = f"viz_{uuid.uuid4().hex}.png"
     output_path = os.path.join("static", viz_id)
     plt.tight_layout()
-    fig.savefig(output_path)
-    plt.close(fig)
+    plt.gcf().savefig(output_path)
+    plt.close("all")
     add_output(
         state,
         "Data Visualization",
         f"Saved numeric distribution plot to `{output_path}`.",
-        code="df.hist(figsize=(8,6))",
+        code="df.select_dtypes(include=['number']).hist(bins=20, figsize=(8,6))",
     )
     return state
 
 
 def predictive_modeling_agent(state: DSState) -> DSState:
     df = state.df
-    target = df.columns[-1]
+    target = state.target_column or df.columns[-1]
     X = df.drop(columns=[target])
     y = df[target]
     numeric_cols = X.select_dtypes(include=["number"]).columns
@@ -195,6 +236,9 @@ def predictive_modeling_agent(state: DSState) -> DSState:
             ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols),
         ]
     )
+
+    if y.nunique() > 2:
+        y = (y > y.median()).astype(int) if y.dtype.kind in {"i", "u", "f"} else y.astype(str)
 
     model = LogisticRegression(max_iter=500)
     clf = Pipeline(steps=[("preprocessor", preprocessor), ("model", model)])

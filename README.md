@@ -43,4 +43,5 @@ If no dataset is uploaded, the system uses a small synthetic dataset to keep the
 ## Development notes
 - Outputs are persisted under `uploads/`, `notebooks/`, and `static/` (for generated plots).
 - Visualization uses a headless Matplotlib backend.
-- Predictive modeling defaults to `LogisticRegression`; if the dataset lacks a target column, a synthetic one is derived from numeric features to keep training functional.
+- Predictive modeling defaults to `LogisticRegression`; if the dataset lacks a target column, a synthetic one is derived from numeric features to keep training functional. Target inference respects common names (`target`, `label`, `outcome`, `y`) and low-cardinality columns before synthesizing.
+- Visualization gracefully skips plots when no numeric columns are present to avoid runtime errors.
