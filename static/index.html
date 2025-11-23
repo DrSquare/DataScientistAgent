@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Scientist Agent</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+    <header>
+        <h1>Data Scientist Agent</h1>
+        <p>Plan, execute, and review multi-agent data science workflows.</p>
+    </header>
+    <main>
+        <section class="panel">
+            <h2>1) Describe your goal & upload data</h2>
+            <form id="run-form">
+                <label for="instructions">Goal / questions</label>
+                <textarea id="instructions" name="instructions" rows="4" placeholder="e.g., explore churn drivers and build a classifier"></textarea>
+                <label for="file">Upload dataset (CSV)</label>
+                <input type="file" id="file" name="file" accept=".csv" />
+                <button type="submit">Generate Plan & Notebook</button>
+            </form>
+            <div id="status" class="status"></div>
+        </section>
+
+        <section class="panel" id="plan-section">
+            <h2>Plan</h2>
+            <ol id="plan-list"></ol>
+        </section>
+
+        <section class="panel" id="outputs-section">
+            <h2>Outputs</h2>
+            <div id="outputs"></div>
+        </section>
+
+        <section class="panel" id="summary-section">
+            <h2>Summary</h2>
+            <p id="summary"></p>
+            <div id="notebook-link"></div>
+        </section>
+    </main>
+
+    <script src="/static/main.js"></script>
+</body>
+</html>
