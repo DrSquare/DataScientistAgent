@@ -443,17 +443,31 @@ def run_data_science_flow(
 
     # Capture state updates from stream
     # app.stream returns dicts with node names as keys and state dicts as values
+    # Each iteration yields one node's updated state; we keep the latest one
     final_state_dict = None
     for updated_state_dict in app.stream(state):
-        # Extract the state from the last node in the dict
-        for node_name, node_state in updated_state_dict.items():
+        # Each dict has one key (node name) with the updated state as its value
+        # Extract the state dict (there's only one per iteration)
+        for node_state in updated_state_dict.values():
             final_state_dict = node_state
         if plan_only:
             break
     
     # Convert final state dict back to DSState object
     if final_state_dict:
-        state = DSState(**final_state_dict)
+        # Reconstruct using only the fields defined in DSState to avoid issues
+        # with any extra fields that might be in the dict
+        state = DSState(
+            instructions=final_state_dict.get("instructions", ""),
+            dataset_path=final_state_dict.get("dataset_path"),
+            df=final_state_dict.get("df"),
+            plan=final_state_dict.get("plan", []),
+            outputs=final_state_dict.get("outputs", []),
+            notebook_cells=final_state_dict.get("notebook_cells", []),
+            notebook_filename=final_state_dict.get("notebook_filename"),
+            target_column=final_state_dict.get("target_column"),
+            visualization_preferences=final_state_dict.get("visualization_preferences", []),
+        )
 
     if notebook_dir:
         os.makedirs(notebook_dir, exist_ok=True)
