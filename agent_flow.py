@@ -440,13 +440,13 @@ def run_data_science_flow(
 
     result_dict = app.invoke(state)
     
-    # Update state from the result dictionary
-    state.plan = result_dict["plan"]
-    state.outputs = result_dict["outputs"]
-    state.notebook_cells = result_dict["notebook_cells"]
+    # Update state from the result dictionary with proper error handling
+    state.plan = result_dict.get("plan", [])
+    state.outputs = result_dict.get("outputs", [])
+    state.notebook_cells = result_dict.get("notebook_cells", [])
     state.notebook_filename = result_dict.get("notebook_filename")
     state.target_column = result_dict.get("target_column")
-    state.visualization_preferences = result_dict["visualization_preferences"]
+    state.visualization_preferences = result_dict.get("visualization_preferences", [])
     state.df = result_dict.get("df")
 
     if notebook_dir:
