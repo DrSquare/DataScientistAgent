@@ -16,8 +16,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
@@ -122,7 +120,7 @@ def load_data_agent(state: DSState) -> DSState:
 def clean_data_agent(state: DSState) -> DSState:
     df = state.df.copy()
     missing_before = df.isnull().sum().sum()
-    df = df.fillna(method="ffill").fillna(method="bfill")
+    df = df.ffill().bfill()
     missing_after = df.isnull().sum().sum()
     state.df = df
     add_output(
@@ -227,6 +225,7 @@ def data_preparation_agent(state: DSState) -> DSState:
 
 
 def visualization_agent(state: DSState) -> DSState:
+    matplotlib.use("Agg")
     df = state.df
     numeric_df = df.select_dtypes(include=["number"])
 
@@ -353,8 +352,12 @@ def predictive_modeling_agent(state: DSState) -> DSState:
         ]
     )
 
-    if y.nunique() > 2:
-        y = (y > y.median()).astype(int) if y.dtype.kind in {"i", "u", "f"} else y.astype(str)
+    # Only binarize numeric targets with high cardinality (> 10 unique values)
+    # This preserves multiclass numeric targets (e.g., classes 0, 1, 2)
+    if y.dtype.kind in {"i", "u", "f"} and y.nunique() > 10:
+        y = (y > y.median()).astype(int)
+    elif y.dtype.kind not in {"i", "u", "f"}:
+        y = y.astype(str)
 
     model = LogisticRegression(max_iter=500)
     clf = Pipeline(steps=[("preprocessor", preprocessor), ("model", model)])
@@ -438,10 +441,33 @@ def run_data_science_flow(
 
     app = graph.compile()
 
-    for _ in app.stream(state):
+    # Capture state updates from stream
+    # app.stream returns dicts with node names as keys and state dicts as values
+    # Each iteration yields one node's updated state; we keep the latest one
+    final_state_dict = None
+    for updated_state_dict in app.stream(state):
+        # Each dict has one key (node name) with the updated state as its value
+        # Extract the state dict (there's only one per iteration)
+        for node_state in updated_state_dict.values():
+            final_state_dict = node_state
         if plan_only:
             break
-        continue
+    
+    # Convert final state dict back to DSState object
+    if final_state_dict:
+        # Reconstruct using only the fields defined in DSState to avoid issues
+        # with any extra fields that might be in the dict
+        state = DSState(
+            instructions=final_state_dict.get("instructions", ""),
+            dataset_path=final_state_dict.get("dataset_path"),
+            df=final_state_dict.get("df"),
+            plan=final_state_dict.get("plan", []),
+            outputs=final_state_dict.get("outputs", []),
+            notebook_cells=final_state_dict.get("notebook_cells", []),
+            notebook_filename=final_state_dict.get("notebook_filename"),
+            target_column=final_state_dict.get("target_column"),
+            visualization_preferences=final_state_dict.get("visualization_preferences", []),
+        )
 
     if notebook_dir:
         os.makedirs(notebook_dir, exist_ok=True)
