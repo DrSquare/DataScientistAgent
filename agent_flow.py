@@ -122,7 +122,7 @@ def load_data_agent(state: DSState) -> DSState:
 def clean_data_agent(state: DSState) -> DSState:
     df = state.df.copy()
     missing_before = df.isnull().sum().sum()
-    df = df.fillna(method="ffill").fillna(method="bfill")
+    df = df.ffill().bfill()
     missing_after = df.isnull().sum().sum()
     state.df = df
     add_output(
@@ -408,7 +408,7 @@ def build_notebook(state: DSState, notebook_dir: str):
 def run_data_science_flow(
     instructions: str,
     dataset_path: Optional[str] = None,
-    plan_only: bool = False,
+    plan_only: bool = False,  # Note: Currently ignored; invoke() runs to completion for correctness
     notebook_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     state = DSState(instructions=instructions, dataset_path=dataset_path)
@@ -438,10 +438,16 @@ def run_data_science_flow(
 
     app = graph.compile()
 
-    for _ in app.stream(state):
-        if plan_only:
-            break
-        continue
+    result_dict = app.invoke(state)
+    
+    # Update state from the result dictionary with proper error handling
+    state.plan = result_dict.get("plan", [])
+    state.outputs = result_dict.get("outputs", [])
+    state.notebook_cells = result_dict.get("notebook_cells", [])
+    state.notebook_filename = result_dict.get("notebook_filename")
+    state.target_column = result_dict.get("target_column")
+    state.visualization_preferences = result_dict.get("visualization_preferences", [])
+    state.df = result_dict.get("df")
 
     if notebook_dir:
         os.makedirs(notebook_dir, exist_ok=True)
