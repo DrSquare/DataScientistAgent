@@ -443,7 +443,7 @@ def run_data_science_flow(
         # For plan_only mode, just run the plan node and capture the updated state
         for chunk in app.stream(state):
             # chunk contains the updated state after the plan node
-            if chunk:
+            if chunk and isinstance(chunk, dict):
                 # Update state with the chunk data
                 for key, value in chunk.items():
                     if hasattr(state, key):
@@ -454,9 +454,7 @@ def run_data_science_flow(
         # Use invoke to capture the complete final state
         # LangGraph returns the state as a dict, so we need to convert it back to DSState
         result_dict = app.invoke(state)
-        # Since the graph nodes modify state in-place and return it, 
-        # we can use the original state object which has been updated through the graph
-        # Or we can reconstruct DSState from the dict
+        # Reconstruct DSState from the result dict, using original state as defaults
         final_state = DSState(
             instructions=result_dict.get("instructions", state.instructions),
             dataset_path=result_dict.get("dataset_path", state.dataset_path),
