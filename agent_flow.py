@@ -122,7 +122,7 @@ def load_data_agent(state: DSState) -> DSState:
 def clean_data_agent(state: DSState) -> DSState:
     df = state.df.copy()
     missing_before = df.isnull().sum().sum()
-    df = df.fillna(method="ffill").fillna(method="bfill")
+    df = df.ffill().bfill()
     missing_after = df.isnull().sum().sum()
     state.df = df
     add_output(
@@ -438,19 +438,43 @@ def run_data_science_flow(
 
     app = graph.compile()
 
-    for _ in app.stream(state):
-        if plan_only:
+    # Capture the final state after executing the workflow
+    if plan_only:
+        # For plan_only mode, just run the plan node and capture the updated state
+        for chunk in app.stream(state):
+            # chunk contains the updated state after the plan node
+            if chunk and isinstance(chunk, dict):
+                # Update state with the chunk data
+                for key, value in chunk.items():
+                    if hasattr(state, key):
+                        setattr(state, key, value)
             break
-        continue
+        final_state = state
+    else:
+        # Use invoke to capture the complete final state
+        # LangGraph returns the state as a dict, so we need to convert it back to DSState
+        result_dict = app.invoke(state)
+        # Reconstruct DSState from the result dict, using original state as defaults
+        final_state = DSState(
+            instructions=result_dict.get("instructions", state.instructions),
+            dataset_path=result_dict.get("dataset_path", state.dataset_path),
+            df=result_dict.get("df", state.df),
+            plan=result_dict.get("plan", state.plan),
+            outputs=result_dict.get("outputs", state.outputs),
+            notebook_cells=result_dict.get("notebook_cells", state.notebook_cells),
+            notebook_filename=result_dict.get("notebook_filename", state.notebook_filename),
+            target_column=result_dict.get("target_column", state.target_column),
+            visualization_preferences=result_dict.get("visualization_preferences", state.visualization_preferences),
+        )
 
     if notebook_dir:
         os.makedirs(notebook_dir, exist_ok=True)
-        build_notebook(state, notebook_dir)
+        build_notebook(final_state, notebook_dir)
 
     result = {
-        "plan": state.plan,
-        "outputs": state.outputs,
-        "summary": state.outputs[-1]["content"] if state.outputs else "",
-        "notebook": state.notebook_filename,
+        "plan": final_state.plan,
+        "outputs": final_state.outputs,
+        "summary": final_state.outputs[-1]["content"] if final_state.outputs else "",
+        "notebook": final_state.notebook_filename,
     }
     return result
